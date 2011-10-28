@@ -1,0 +1,103 @@
+// DM365 stop mode startup
+// 
+// Copyright (C) 2011 Bticino S.p.A.
+// Author: raffaele.recalcati@bticino.it
+//
+// This program is free software you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option)any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not,write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+//
+//
+// NOTE:
+// mypathinit.cmm has to contain the right path for your setup
+//
+
+local &kernelPath
+local &usernumstrip 
+
+do mypathinit.cmm
+ 
+print "Kernel Path: '&kernelPath' "
+print "Directory path levels to strip: '&usernumstrip' "
+
+Break.Delete
+b.res
+map.bo
+MAP.RESet
+sYmbol.RESet
+MMU.RESet
+SYStem.RESet
+SYStem.CPU DM365
+SYStem.JtagClock RTCK
+SYStem.Up
+
+print "no dm365_init because interfere with bubl"
+//do dm365_init.cmm
+
+; Linux start-up
+TrOnchip.Set DABORT OFF		; turn off breakpoint on data abort
+TrOnchip.Set PABORT OFF		; turn off breakpoint on program abort
+TrOnchip.Set UNDEF OFF		; turn off breakpoint on undefined instruction
+SYStem.Option MMUSPACES ON	; enable space ids to virtual addresses
+
+; Attach to device
+// SYStem.Mode ATTACH
+SETUP.IMASKASM ON          ; lock interrupts while single stepping
+
+symbol.SOURCEPATH.SETRECURSEDIR &kernelPath
+data.load.elf &kernelPath/vmlinux /nocode /gnu /strippart &usernumstrip /lowerpath /NOREG
+
+; Declare the MMU format to the debugger
+ ; - table format is "LINUX"
+ ; - table base address is at label "swapper_pg_dir"
+ ; - kernel address translation
+ ; Map the virtual kernel symbols to physical addresses to give 
+ ; the debugger access to it before CPU MMU is initialized
+
+; Configure Trace32 for Linux debugging
+TASK.CONFIG ~~/demo/arm/kernel/linux/linux.t32		; Load Linux awareness 
+MENU.ReProgram ~~/demo/arm/kernel/linux/linux.men		; Load Linux menu
+HELP.FILTER.Add rtoslinux						; Add linux awareness manual to help filter
+sYmbol.AutoLoad.CHECKLINUX "do "+os.ppd()+"/../autoload " 	; Switch on symbol autoloader
+
+; Configure Autoloader to automatically load symbols for process debugging
+Task.SYMBOL.Option Autoload Process
+
+; print "initializing debugger MMU..."
+MMU.RESET
+MMU.FORMAT LINUX swapper_pg_dir 0xc0000000--0xc7ffffff 0x80000000
+MMU.COMMON 0BF000000--0FFffffff
+MMU.AUTOSCAN ON
+MMU.TABLEWALK ON
+MMU.ON
+
+dialog.yesno "Startup the system: yes or no?"
+entry &startup
+
+if &startup
+(
+	Print "Startup"
+	go
+	wait 1.
+	go
+) 
+else 
+(
+	Print "Ready for debug"
+)
+
+enddo
+
+
+
+
